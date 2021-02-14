@@ -197,6 +197,9 @@ public class HBaseDemo {
         //如果是时间戳, 为了让最新数据在前面, 可以(Long.max - 时间戳)
         Scan scan = new Scan();
         //可以通过 count 'user' 来查看手机号数据
+        //合理设置缓存, 指定每次拉取的数据(默认100)
+        //一次请求1000条数据
+        scan.setCaching(1000);
         //开始值
         String startRow = "181986635513-" + (Long.MAX_VALUE -sdf.parse("20210331000000").getTime());
         //结束值
@@ -218,6 +221,8 @@ public class HBaseDemo {
             System.out.println("opponentPhone=" + opponentPhoneStr + " connectTime=" + connectTimeStr
                     + " date=" + dateStr + " type=" + typeStr);
         }
+        //释放资源
+        resultScanner.close();
 
     }
 
@@ -228,6 +233,10 @@ public class HBaseDemo {
         //根据业务标识散列情况, 正序或者倒序(防止数据倾斜, 前缀相同的在同一个region server)
         //如果是时间戳, 为了让最新数据在前面, 可以(Long.max - 时间戳)
         Scan scan = new Scan();
+        //可以通过 count 'user' 来查看手机号数据
+        //合理设置缓存, 指定每次拉取的数据(默认100)
+        //一次请求1000条数据
+        scan.setCaching(1000);
         //MUST_PASS_ALL 满足所有条件(and); MUST_PASS_ONE 满足一个条件(or)
         FilterList filterList = new FilterList(FilterList.Operator.MUST_PASS_ALL);
         //type=1
@@ -255,6 +264,9 @@ public class HBaseDemo {
             System.out.println("opponentPhone=" + opponentPhoneStr + " connectTime=" + connectTimeStr
                     + " date=" + dateStr + " type=" + typeStr);
         }
+
+        //释放资源
+        resultScanner.close();
 
     }
 
