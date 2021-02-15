@@ -1,4 +1,4 @@
-package com.gin.flink.sink.hbase.ts;
+package com.gin.flink.sink.hbase.batch;
  
 import org.apache.flink.api.common.io.OutputFormat;
 import org.apache.flink.api.java.tuple.Tuple2;
@@ -19,29 +19,37 @@ public class HBaseOutputFormat implements OutputFormat<Tuple2<String, String>> {
     private Connection conn = null;
     TableName tableName = null;
     private Table table = null;
- 
+
+
     @Override
-    public void configure(Configuration parameters) {
+    public void configure(Configuration configuration) {
+
+
     }
- 
+
     @Override
     public void open(int taskNumber, int numTasks) throws IOException {
-        System.out.println("Read source open");
+        System.out.println("write source open");
         //创建配置文件对象
         config = HBaseConfiguration.create();
         //加载ZK配置
         config.set("hbase.zookeeper.quorum", "node02,node03,node04");
-        conn = ConnectionFactory.createConnection(config);
-        //获取数据操作对象
-        tableName = TableName.valueOf("psn");
-        table = conn.getTable(tableName);
+        try {
+            conn = ConnectionFactory.createConnection(config);
+
+            //获取数据操作对象
+            tableName = TableName.valueOf("psn2");
+            table = conn.getTable(tableName);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
 
     }
  
     @Override
     public void writeRecord(org.apache.flink.api.java.tuple.Tuple2<String, String> record) throws IOException {
         Put put = new Put(Bytes.toBytes(record.f0));
-        put.addColumn(Bytes.toBytes("cf"), Bytes.toBytes("test1"), Bytes.toBytes(record.f1));
+        put.addColumn(Bytes.toBytes("cf"), Bytes.toBytes("name"), Bytes.toBytes(record.f1));
         table.put(put);
     }
  

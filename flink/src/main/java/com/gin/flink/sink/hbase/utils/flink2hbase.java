@@ -1,7 +1,5 @@
 package com.gin.flink.sink.hbase.utils;
 
-import com.gin.flink.sink.hbase.utils.ConnectionPoolConfig;
-import com.gin.flink.sink.hbase.utils.HbaseConnectionPool;
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
 import org.apache.flink.streaming.api.TimeCharacteristic;

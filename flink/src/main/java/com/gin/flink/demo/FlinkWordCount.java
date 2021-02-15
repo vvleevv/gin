@@ -1,4 +1,4 @@
-package com.gin.flink;
+package com.gin.flink.demo;
 
 import lombok.*;
 import org.apache.flink.api.common.functions.FlatMapFunction;

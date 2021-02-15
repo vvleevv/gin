@@ -1,4 +1,4 @@
-package com.gin.flink.sink.hbase.ts;
+package com.gin.flink.sink.hbase.batch.common;
 
 import org.apache.flink.api.java.tuple.Tuple;
 import org.apache.flink.configuration.Configuration;
