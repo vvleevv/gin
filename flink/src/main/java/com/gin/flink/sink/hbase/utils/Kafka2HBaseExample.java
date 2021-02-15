@@ -21,7 +21,7 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Properties;
 
-public class flink2hbase {
+public class Kafka2HBaseExample {
 
     private static TableName tableName = TableName.valueOf("Flink2HBase");
     private static final String columnFamily = "info";

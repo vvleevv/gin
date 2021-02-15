@@ -17,24 +17,29 @@
 
 package com.gin.flink.demo;
 
-import com.gin.flink.sink.hbase.batch.HBaseOutputFormat;
-import com.gin.flink.sink.hbase.stream.HBaseWriterSink;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gin.flink.sink.hbase.stream.HBaseWriterSinkSingle;
+import com.gin.flink.sink.hbase.utils.HBaseDAOImpl;
+import org.apache.flink.api.common.functions.FlatMapFunction;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.runtime.state.memory.MemoryStateBackend;
 import org.apache.flink.streaming.api.CheckpointingMode;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.datastream.DataStreamSource;
+import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.CheckpointConfig;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.util.Collector;
+import org.apache.hadoop.hbase.Cell;
+import org.apache.hadoop.hbase.CellUtil;
+import org.apache.hadoop.hbase.client.Result;
+import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.rocketmq.client.AccessChannel;
 import org.apache.rocketmq.flink.RocketMQConfig;
-import org.apache.rocketmq.flink.RocketMQSink;
 import org.apache.rocketmq.flink.RocketMQSource;
 import org.apache.rocketmq.flink.common.serialization.SimpleTupleDeserializationSchema;
-import org.apache.rocketmq.flink.function.SinkMapFunction;
-import org.apache.rocketmq.flink.function.SourceMapFunction;
 
 import java.util.Properties;
 
@@ -43,8 +48,67 @@ import static org.apache.rocketmq.flink.RocketMQConfig.DEFAULT_CONSUMER_TAG;
 
 public class RocketMQToHbase {
 
+
+    public static void main(String[] args) throws Exception {
+        //计算基本环境配置
+        StreamExecutionEnvironment env = initEnv(args);
+        //输入
+        Properties consumerProps = getConsumerProps();
+        SimpleTupleDeserializationSchema schema = new SimpleTupleDeserializationSchema();
+        DataStreamSource<Tuple2<String, String>> source = env.addSource(
+                new RocketMQSource<>(schema, consumerProps)).setParallelism(1);
+        //source.print();
+
+        //计算
+        SingleOutputStreamOperator<TradeCreateVO> flatMap = source.flatMap(new FlatMapFunction<Tuple2<String, String>, TradeCreateVO>() {
+
+            @Override
+            public void flatMap(Tuple2<String, String> tuple2, Collector<TradeCreateVO> collector) throws Exception {
+                //MQ数据解析
+                ObjectMapper mapper = new ObjectMapper();
+                JsonNode root = mapper.readTree(tuple2.f1);
+                /*LinkedList<String> skuList = new LinkedList<>();
+                LinkedList<String> vendorList = new LinkedList<>();
+                for (JsonNode jsonNode : root.get("itemList")) {
+                    skuList.add(jsonNode.get("sku").asText());
+                    vendorList.add(jsonNode.get("vendorId").asText());
+                }
+                String storeId = root.get("storeId").asText();
+                */
+                String orderId = root.get("orderId").asText();
+                String userId = root.get("userId").asText();
+                int totalQty = root.get("totalQty").asInt();
+                long totalCent = root.get("orderTotal").get("cent").asLong();
+
+                //累计
+                HBaseDAOImpl hBaseDAO = new HBaseDAOImpl();
+                Result result = hBaseDAO.getOneRow("psn2", userId);
+                System.out.println(result.getExists());
+                System.out.println(result.isEmpty());
+                if (!result.isEmpty() ) {
+                    Cell totalQtyCell = result.getColumnLatestCell(Bytes.toBytes("cf"), Bytes.toBytes("totalQty"));
+                    Cell totalCentCell = result.getColumnLatestCell(Bytes.toBytes("cf"), Bytes.toBytes("totalCent"));
+                    totalQty += Integer.parseInt(Bytes.toString(CellUtil.cloneValue(totalQtyCell)));
+                    totalCent += Long.parseLong(Bytes.toString(CellUtil.cloneValue(totalCentCell)));
+                }
+                TradeCreateVO tradeCreateVO = TradeCreateVO.builder().userId(userId).totalQty(totalQty).totalCent(totalCent).build();
+                collector.collect(tradeCreateVO);
+
+            }
+        }).setParallelism(1);
+        flatMap.print();
+
+        //输出
+        System.out.println("HBase Reader add sink");
+        flatMap.addSink(new HBaseWriterSinkSingle()).setParallelism(1);
+
+        //执行任务
+        env.execute("rocketmq-to-hbase");
+    }
+
     /**
      * Source Config
+     *
      * @return properties
      */
     private static Properties getConsumerProps() {
@@ -59,8 +123,7 @@ public class RocketMQToHbase {
         return consumerProps;
     }
 
-    public static void main(String[] args) throws Exception {
-
+    private static StreamExecutionEnvironment initEnv(String[] args) {
         final ParameterTool params = ParameterTool.fromArgs(args);
 
         // for local
@@ -87,18 +150,8 @@ public class RocketMQToHbase {
         // enable externalized checkpoints which are retained after job cancellation
         env.getCheckpointConfig().enableExternalizedCheckpoints(
                 CheckpointConfig.ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION);
-
-        Properties consumerProps = getConsumerProps();
-
-        SimpleTupleDeserializationSchema schema = new SimpleTupleDeserializationSchema();
-
-        DataStreamSource<Tuple2<String, String>> source = env.addSource(
-                new RocketMQSource<>(schema, consumerProps)).setParallelism(2);
-
-        source.print();
-        System.out.println("HBase Reader add sink");
-        source.addSink(new HBaseWriterSinkSingle());
-
-        env.execute("rocketmq-to-hbase");
+        return env;
     }
+
+
 }

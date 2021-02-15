@@ -1,19 +1,18 @@
 package com.gin.flink.sink.hbase.stream;
 
-import org.apache.flink.api.java.tuple.Tuple2;
+import com.gin.flink.demo.TradeCreateVO;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.streaming.api.functions.sink.RichSinkFunction;
-import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.*;
 import org.apache.hadoop.hbase.util.Bytes;
 
 import java.io.IOException;
-import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 
-public class HBaseWriterSinkSingle extends RichSinkFunction<Tuple2<String, String>> {
+public class HBaseWriterSinkSingle extends RichSinkFunction<TradeCreateVO> {
 
     //配置
     org.apache.hadoop.conf.Configuration config = null;
@@ -23,11 +22,13 @@ public class HBaseWriterSinkSingle extends RichSinkFunction<Tuple2<String, Strin
     TableName tableName = null;
     private Table table = null;
 
+    AtomicInteger count = new AtomicInteger(0);
+
 
     @Override
     public void open(Configuration parameters) throws Exception {
-
-        System.out.println("Read source open");
+        count.incrementAndGet();
+        System.out.println("Read source open" + count);
         super.open(parameters);
         //创建配置文件对象
         config = HBaseConfiguration.create();
@@ -42,9 +43,10 @@ public class HBaseWriterSinkSingle extends RichSinkFunction<Tuple2<String, Strin
     }
 
     @Override
-    public void invoke(Tuple2<String, String> value, Context context) throws Exception {
-        Put put = new Put(Bytes.toBytes(value.f0));
-        put.addColumn(Bytes.toBytes("cf"), Bytes.toBytes("name"), Bytes.toBytes(value.f1));
+    public void invoke(TradeCreateVO value, Context context) throws Exception {
+        Put put = new Put(Bytes.toBytes(value.getUserId()));
+        put.addColumn(Bytes.toBytes("cf"), Bytes.toBytes("totalQty"), Bytes.toBytes(String.valueOf(value.getTotalQty())));
+        put.addColumn(Bytes.toBytes("cf"), Bytes.toBytes("totalCent"), Bytes.toBytes(String.valueOf(value.getTotalCent())));
         table.put(put);
     }
 
