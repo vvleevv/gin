@@ -19,9 +19,13 @@ package com.gin.flink.demo;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.gin.flink.common.unrepeated.UnrepeatedKeyProcessBitmap;
+import com.gin.flink.common.unrepeated.UnrepeatedKeyProcessBitmapCnt;
 import com.gin.flink.sink.hbase.stream.HBaseWriterSinkSingle;
 import com.gin.flink.sink.hbase.utils.HBaseDAOImpl;
 import org.apache.flink.api.common.functions.FlatMapFunction;
+import org.apache.flink.api.common.typeinfo.TypeHint;
+import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.runtime.state.memory.MemoryStateBackend;
@@ -41,14 +45,17 @@ import org.apache.rocketmq.flink.RocketMQConfig;
 import org.apache.rocketmq.flink.RocketMQSource;
 import org.apache.rocketmq.flink.common.serialization.SimpleTupleDeserializationSchema;
 
+import java.io.IOException;
 import java.util.Properties;
 
 import static org.apache.rocketmq.flink.RocketMQConfig.CONSUMER_OFFSET_LATEST;
 import static org.apache.rocketmq.flink.RocketMQConfig.DEFAULT_CONSUMER_TAG;
 
-public class RocketMQToHbase {
+public class RocketMQToHBaseDemo2 {
 
-
+    /**
+     * bitmap去重, 去重的key映射范围最大不能超过 Long(9223372036854775807L)
+     */
     public static void main(String[] args) throws Exception {
         //计算基本环境配置
         StreamExecutionEnvironment env = initEnv(args);
@@ -59,8 +66,14 @@ public class RocketMQToHbase {
                 new RocketMQSource<>(schema, consumerProps)).setParallelism(1);
         //source.print();
 
+        //bitmap去重, 去重的key映射范围最大不能超过 Long(9223372036854775807L)
+        //key不能设置过期时间
+        SingleOutputStreamOperator<Tuple2<String, String>> process = source.keyBy(0)
+                .process(new UnrepeatedKeyProcessBitmapCnt(), TypeInformation.of(new TypeHint<Tuple2<String, String>>() {}));
+
+        process.print();
         //计算
-        SingleOutputStreamOperator<TradeCreateVO> flatMap = source.flatMap(new FlatMapFunction<Tuple2<String, String>, TradeCreateVO>() {
+        SingleOutputStreamOperator<TradeCreateVO> flatMap = process.flatMap(new FlatMapFunction<Tuple2<String, String>, TradeCreateVO>() {
 
             @Override
             public void flatMap(Tuple2<String, String> tuple2, Collector<TradeCreateVO> collector) throws Exception {
@@ -82,9 +95,8 @@ public class RocketMQToHbase {
 
                 //累计
                 HBaseDAOImpl hBaseDAO = new HBaseDAOImpl();
+                //查询历史值
                 Result result = hBaseDAO.getOneRow("psn2", userId);
-                System.out.println(result.getExists());
-                System.out.println(result.isEmpty());
                 if (!result.isEmpty() ) {
                     Cell totalQtyCell = result.getColumnLatestCell(Bytes.toBytes("cf"), Bytes.toBytes("totalQty"));
                     Cell totalCentCell = result.getColumnLatestCell(Bytes.toBytes("cf"), Bytes.toBytes("totalCent"));
@@ -123,17 +135,21 @@ public class RocketMQToHbase {
         return consumerProps;
     }
 
-    private static StreamExecutionEnvironment initEnv(String[] args) {
+    private static StreamExecutionEnvironment initEnv(String[] args) throws IOException {
         final ParameterTool params = ParameterTool.fromArgs(args);
 
         // for local
-        StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment();
+        //StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment();
 
         // for cluster
-        // StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+
+        // for remote
+        //StreamExecutionEnvironment env = StreamExecutionEnvironment.createRemoteEnvironment("node01", 8081);
 
         env.getConfig().setGlobalJobParameters(params);
         env.setStateBackend(new MemoryStateBackend());
+        //env.setStateBackend(new FsStateBackend("hdfs://mycluster/flink/checkDir/"));
         env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
 
         // start a checkpoint every 10s
@@ -150,6 +166,17 @@ public class RocketMQToHbase {
         // enable externalized checkpoints which are retained after job cancellation
         env.getCheckpointConfig().enableExternalizedCheckpoints(
                 CheckpointConfig.ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION);
+
+        /*
+        //rocksDBStateBackend 配置
+        RocksDBStateBackend rocksDBStateBackend = new RocksDBStateBackend("hdfs://mycluster/flink/checkDir/", true);
+        rocksDBStateBackend.setPredefinedOptions(PredefinedOptions.FLASH_SSD_OPTIMIZED);
+        rocksDBStateBackend.setNumberOfTransferingThreads(2);
+        rocksDBStateBackend.enableTtlCompactionFilter();
+        env.setStateBackend(rocksDBStateBackend);
+        env.setStreamTimeCharacteristic(TimeCharacteristic.ProcessingTime);
+        env.enableCheckpointing(5 * 60 * 1000);*/
+
         return env;
     }
 

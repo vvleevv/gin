@@ -18,7 +18,7 @@ import org.apache.flink.util.Collector;
  * yum install nc -y
  * yum install nmap -y
  */
-public class FlinkWordCount {
+public class FlinkWordCountDemo {
     public static void main(String[] args) throws Exception {
         //定义socket的端口号
         int port;
